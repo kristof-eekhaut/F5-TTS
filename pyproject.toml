@@ -20,6 +20,7 @@ dependencies = [
     "click",
     "datasets",
     "ema_pytorch>=0.5.2",
+    "flask",
     "gradio>=3.45.2",
     "jieba",
     "librosa",

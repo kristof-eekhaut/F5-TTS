@@ -5,6 +5,7 @@ import os
 
 from importlib.resources import files
 import soundfile as sf
+from io import BytesIO
 import socket
 import struct
 import torch
@@ -24,7 +25,7 @@ app = Flask(__name__)
 
 
 class F5TTS:
-    def __init__(self, ckpt_file, vocab_file, ref_audio, ref_text, temp_out_dir, dtype=torch.float32):
+    def __init__(self, ckpt_file, vocab_file, ref_audio, ref_text, dtype=torch.float32):
         self.device = device
         self.target_sample_rate = target_sample_rate
 
@@ -50,9 +51,6 @@ class F5TTS:
         self.ref_audio = ref_audio
         self.ref_text = ref_text
 
-        # Set audio ouput dir
-        self.temp_out_dir = temp_out_dir
-
         # Warm up the model
         self._warm_up()
 
@@ -66,9 +64,6 @@ class F5TTS:
         # Pass the vocoder as an argument here
         infer_batch_process((audio, sr), ref_text, [gen_text], self.model, self.vocoder, device=self.device)
         print("Warm-up completed.")
-
-    def export_wav(self, wav, file_wave):
-        sf.write(file_wave, wav, self.target_sample_rate)
 
     def generate_audio(self, text):
         # Preprocess the reference audio and text
@@ -87,21 +82,19 @@ class F5TTS:
             device=self.device,  # Pass vocoder here
         )
 
-        audio_filename = f"{uuid.uuid4()}.wav"
-        out_file = str(self.temp_out_dir.joinpath(audio_filename))
-        self.export_wav(wav, out_file)
+        audio_buffer = BytesIO()
+        sf.write(audio_buffer, wav, self.target_sample_rate, format='WAV')
+        audio_buffer.seek(0)  # Reset buffer position to the start
 
-        return out_file;
-
-
+        return audio_buffer
 
 
 # Add your TTS generation code here as a function
 def generate_audio(gen_text):
     text = gen_text.strip()
 
-    audio_path = processor.generate_audio(text)
-    return audio_path
+    audio_buffer = processor.generate_audio(text)
+    return audio_buffer
 
 @app.route('/generate_audio', methods=['POST'])
 def generate_audio_api():
@@ -111,26 +104,22 @@ def generate_audio_api():
 
     gen_text = data['text']
 
-    try:
-        audio_path = generate_audio(gen_text)
+    audio_buffer = generate_audio(gen_text)
 
-        if not os.path.exists(audio_path):
-            return jsonify({"error": "Failed to generate audio"}), 500
-
-        return send_file(audio_path, as_attachment=True)
-    finally:
-        # Clean up: remove the audio file after sending the response
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+    return send_file(
+        audio_buffer,
+        as_attachment=True,
+        download_name="generated_audio.wav",
+        mimetype="audio/wav"
+    )
 
 if __name__ == '__main__':
     try:
         # Load the model and vocoder using the provided files
         ckpt_file = str(files("f5_tts").joinpath("../../ckpts/F5TTS_Base/model_1200000.safetensors"))
         vocab_file = ""  # Add vocab file path if needed
-        ref_audio = str(files("f5_tts").joinpath("../../voices/example_cassandra.mp3"))  # add ref audio"./tests/ref_audio/reference.wav"
-
-        temp_out_dir = files("f5_tts").joinpath("../../temp/")
+        ref_audio = str(files("f5_tts").joinpath("../../test/example_cassandra.mp3"))
+        ref_text = "Fuck! I had a feeling she knew. Last night her reaction was weird and she didn't seem surprised."
 
         # Initialize the processor with the model and vocoder
         processor = F5TTS(
@@ -138,7 +127,6 @@ if __name__ == '__main__':
             vocab_file=vocab_file,
             ref_audio=ref_audio,
             ref_text=ref_text,
-            temp_out_dir=temp_out_dir,
             dtype=torch.float32,
         )
 

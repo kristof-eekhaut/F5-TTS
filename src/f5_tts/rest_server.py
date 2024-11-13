@@ -118,7 +118,7 @@ if __name__ == '__main__':
         # Load the model and vocoder using the provided files
         ckpt_file = str(files("f5_tts").joinpath("../../ckpts/F5TTS_Base/model_1200000.safetensors"))
         vocab_file = ""  # Add vocab file path if needed
-        ref_audio = str(files("f5_tts").joinpath("../../test/example_cassandra.mp3"))
+        ref_audio = str(files("f5_tts").joinpath("../../voices/example_cassandra.mp3"))
         ref_text = "Fuck! I had a feeling she knew. Last night her reaction was weird and she didn't seem surprised."
 
         # Initialize the processor with the model and vocoder

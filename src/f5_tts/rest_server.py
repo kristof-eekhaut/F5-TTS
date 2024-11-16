@@ -25,7 +25,7 @@ app = Flask(__name__)
 
 
 class F5TTS:
-    def __init__(self, ckpt_file, vocab_file, ref_audio, ref_text, dtype=torch.float32):
+    def __init__(self, ckpt_file, vocab_file, ref_voices_dir, dtype=torch.float32):
         self.device = device
         self.target_sample_rate = target_sample_rate
 
@@ -47,27 +47,15 @@ class F5TTS:
         # Set sampling rate for streaming
         self.sampling_rate = 24000  # Consistency with client
 
-        # Set reference audio and text
-        self.ref_audio = ref_audio
-        self.ref_text = ref_text
+        self.ref_voices_dir = ref_voices_dir
 
-        # Warm up the model
-        self._warm_up()
+    def generate_audio(self, text, voice_name):
+        files = [f for f in os.listdir(str(self.ref_voices_dir)) if (f.endswith(".mp3") or f.endswith(".wav")) and f.startswith(voice_name)]
+        ref_audio = str(self.ref_voices_dir.joinpath(files[0]))
+        ref_text = open(str(self.ref_voices_dir.joinpath(voice_name + ".txt")), 'r').read()
 
-    def _warm_up(self):
-        """Warm up the model with a dummy input to ensure it's ready for real-time processing."""
-        print("Warming up the model...")
-        ref_audio, ref_text = preprocess_ref_audio_text(self.ref_audio, self.ref_text)
-        audio, sr = torchaudio.load(ref_audio)
-        gen_text = "Warm-up text for the model."
-
-        # Pass the vocoder as an argument here
-        infer_batch_process((audio, sr), ref_text, [gen_text], self.model, self.vocoder, device=self.device)
-        print("Warm-up completed.")
-
-    def generate_audio(self, text):
         # Preprocess the reference audio and text
-        ref_audio, ref_text = preprocess_ref_audio_text(self.ref_audio, self.ref_text)
+        ref_audio, ref_text = preprocess_ref_audio_text(ref_audio,ref_text)
 
         # Load reference audio
         audio, sr = torchaudio.load(ref_audio)
@@ -89,12 +77,18 @@ class F5TTS:
         return audio_buffer
 
 
-# Add your TTS generation code here as a function
-def generate_audio(gen_text):
+def generate_audio(gen_text, voice_name):
     text = gen_text.strip()
 
-    audio_buffer = processor.generate_audio(text)
+    audio_buffer = processor.generate_audio(text, voice_name)
     return audio_buffer
+
+
+def warm_up(voice_name):
+    print("Warming up the model...")
+    gen_text = "Warm-up text for the model."
+    generate_audio(gen_text, voice_name)
+    print("Warm-up completed.")
 
 @app.route('/generate_audio', methods=['POST'])
 def generate_audio_api():
@@ -103,8 +97,10 @@ def generate_audio_api():
         return jsonify({"error": "No text provided"}), 400
 
     gen_text = data['text']
+    voice_name = data['voice']
 
-    audio_buffer = generate_audio(gen_text)
+
+    audio_buffer = generate_audio(gen_text, voice_name)
 
     return send_file(
         audio_buffer,
@@ -118,15 +114,14 @@ if __name__ == '__main__':
         # Load the model and vocoder using the provided files
         ckpt_file = str(files("f5_tts").joinpath("../../ckpts/F5TTS_Base/model_1200000.safetensors"))
         vocab_file = ""  # Add vocab file path if needed
-        ref_audio = str(files("f5_tts").joinpath("../../voices/example_cassandra.mp3"))
-        ref_text = "Fuck! I had a feeling she knew. Last night her reaction was weird and she didn't seem surprised."
+
+        ref_voices_dir = files("f5_tts").joinpath("../../voices")
 
         # Initialize the processor with the model and vocoder
         processor = F5TTS(
             ckpt_file=ckpt_file,
             vocab_file=vocab_file,
-            ref_audio=ref_audio,
-            ref_text=ref_text,
+            ref_voices_dir=ref_voices_dir,
             dtype=torch.float32,
         )
 

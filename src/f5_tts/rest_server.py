@@ -55,10 +55,15 @@ class F5TTS:
         ref_text = open(str(self.ref_voices_dir.joinpath(voice_name + ".txt")), 'r').read()
 
         # Preprocess the reference audio and text
-        ref_audio, ref_text = preprocess_ref_audio_text(ref_audio,ref_text)
+        ref_audio, ref_text = preprocess_ref_audio_text(ref_audio, ref_text)
 
         # Load reference audio
         audio, sr = torchaudio.load(ref_audio)
+
+        """Warm up the model with a dummy input to ensure it's ready for real-time processing."""
+        warmup_text = "Warm-up text for the model."
+        infer_batch_process((audio, sr), ref_text, [warmup_text], self.model, self.vocoder, device=self.device)
+        print("Warm-up completed.")
 
         # Run inference for the input text
         wav, sr, spect = infer_batch_process(
